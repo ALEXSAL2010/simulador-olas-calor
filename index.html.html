@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Dashboard Offline v5.3 — Olas de Calor + alertas por temperatura e impacto sanitario</title>
+<style>
+  :root{ --bg:#0f172a; --card:#111827; --muted:#94a3b8; --text:#e5e7eb; --ring:#38bdf8; }
+  *{box-sizing:border-box} body{margin:0;background:#0b1224;color:var(--text);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial;}
+  header{padding:20px 24px;border-bottom:1px solid #1f2937;position:sticky;top:0;background:#0b1224}
+  h1{margin:0;font-size:clamp(18px,2.4vw,28px);font-weight:700}
+  .sub{color:var(--muted);font-size:14px;margin-top:6px}
+  .container{display:grid;grid-template-columns:340px 1fr;gap:18px;padding:18px;align-items:start}
+  @media (max-width: 980px){ .container{grid-template-columns:1fr} }
+  .card{background:#0d162e;border:1px solid #1f2937;border-radius:16px;padding:16px}
+  .card h2{margin:0 0 10px 0;font-size:18px}
+  label{display:block;font-size:13px;color:var(--muted);margin:12px 0 6px}
+  input[type="file"], input[type="number"], input[type="date"], input[type="text"], select{
+    width:100%;padding:10px 12px;border-radius:10px;border:1px solid #22304a;background:#0a1224;color:var(--text);outline:none}
+  input:focus, select:focus{border-color:var(--ring)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .btn{display:inline-flex;gap:8px;align-items:center;justify-content:center;cursor:pointer;border:1px solid #1f2937;
+    background:#122447;color:var(--text);padding:10px 12px;border-radius:12px;font-weight:600;font-size:14px}
+  .btn.ok{background:#0f3c2f;border-color:#064e3b} .btn.warn{background:#3a2605;border-color:#854d0e}
+  .grid{display:grid;grid-template-columns:1fr;gap:16px}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width: 1100px){ .grid-2{grid-template-columns:1fr} }
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:8px;border-bottom:1px solid #22304a;text-align:left} th{color:#93c5fd}
+  .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  @media (max-width: 1200px){ .metrics{grid-template-columns:repeat(2,1fr)} }
+  .metric{background:#0b1224;border:1px solid #1f2937;border-radius:14px;padding:12px}
+  .metric .val{font-weight:800;font-size:20px} .metric .lbl{font-size:12px;color:var(--muted);margin-top:4px}
+  .alert-box{margin-top:12px;border-radius:14px;padding:12px;border:1px solid #1f2937;background:#0b1224}
+  .alert-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+  .alert-title{font-weight:800;font-size:16px}
+  .alert-desc{font-size:13px;color:#cbd5e1;margin-top:6px}
+  .alert-code{font-weight:800;border-radius:999px;padding:6px 10px;font-size:12px;border:1px solid rgba(255,255,255,.25)}
+  .alert-yellow{background:rgba(234,179,8,.16);border-color:#eab308}
+  .alert-yellow .alert-code{background:#eab308;color:#111827}
+  .alert-orange{background:rgba(249,115,22,.17);border-color:#f97316}
+  .alert-orange .alert-code{background:#f97316;color:#111827}
+  .alert-red{background:rgba(239,68,68,.18);border-color:#ef4444}
+  .alert-red .alert-code{background:#ef4444;color:#fff}
+  .alert-gray{background:#0b1224;border-color:#334155}
+  .alert-gray .alert-code{background:#334155;color:#e5e7eb}
+  .impact-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+  @media (max-width: 900px){ .impact-grid{grid-template-columns:1fr} }
+  .impact-item{background:#0b1224;border:1px solid #22304a;border-radius:12px;padding:10px}
+  .impact-name{font-weight:800;font-size:13px}
+  .impact-meta{font-size:12px;color:#cbd5e1;margin-top:4px;line-height:1.45}
+  .impact-badge{display:inline-block;margin-top:6px;border-radius:999px;padding:4px 8px;font-size:11px;font-weight:800;border:1px solid rgba(255,255,255,.18)}
+  .badge-gray{background:#334155;color:#e5e7eb}
+  .badge-yellow{background:#eab308;color:#111827}
+  .badge-orange{background:#f97316;color:#111827}
+  .badge-red{background:#ef4444;color:#fff}
+  .pill{padding:6px 8px;border-radius:999px;border:1px solid #1f2937;background:#0b1224;color:var(--muted);font-size:12px}
+  .hint{color:#a5b4fc;font-size:12px;margin-top:4px}
+  canvas{width:100%;height:280px;border-radius:10px;background:#0b1224;border:1px solid #1f2937}
+  .note{font-size:12px;color:#fbbf24;margin-top:6px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Dashboard — Olas de Calor (Offline v5.1)</h1>
+  <div class="sub">CSV sin internet. Incluye menú de alerta por temperatura y cuadro descriptivo del impacto sanitario.</div>
+</header>
+
+<div class="container">
+  <aside class="card">
+    <h2>1) Carga de datos</h2>
+    <label>Temperatura (CSV)</label>
+    <input id="fileTemp" type="file" accept=".csv,text/csv"/>
+    <div class="row">
+      <div><label>Columna fecha (temp)</label><input id="tempDateCol" type="text" placeholder="date"/></div>
+      <div>
+        <label>Columna de temperatura</label>
+        <select id="tempValCol">
+          <option value="">(elige o escribe)</option>
+        </select>
+        <input id="tempValColTxt" type="text" placeholder="o escribe: tmean / tmax" style="margin-top:6px"/>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Modo de olas de calor</label>
+        <select id="hwMode">
+          <option value="auto" selected>Detección automática</option>
+          <option value="id">Usar heatwave_id del CSV</option>
+        </select>
+      </div>
+      <div><label>Columna ID de ola</label><input id="hwIdCol" type="text" placeholder="heatwave_id" value="heatwave_id"/></div>
+    </div>
+    <div class="row">
+      <div><label>Umbral (°C)</label><input id="thr" type="number" step="0.1" value="32"/></div>
+      <div><label>Mín. días consecutivos</label><input id="minDays" type="number" value="3"/></div>
+    </div>
+    <div class="row">
+      <button class="btn" id="btnTplTemp">Plantilla temperatura</button>
+      <button class="btn" id="btnDemo">Cargar DEMO</button>
+    </div>
+    <div class="note">En modo automático se usa umbral + días consecutivos. En modo CSV se usa <b>heatwave_id</b>.</div>
+
+    <div style="height:1px;background:#1f2937;margin:12px 0"></div>
+    <h2>Alertas por temperatura</h2>
+    <label>Perfil de niveles</label>
+    <select id="tempAlertProfile">
+      <option value="caribe" selected>Caribe cálido: 32 / 34 / 36 °C</option>
+      <option value="sensible">Alta sensibilidad: 30 / 32 / 34 °C</option>
+      <option value="custom">Personalizado</option>
+    </select>
+    <div class="row">
+      <div><label>Amarillo desde (°C)</label><input id="tempYellow" type="number" step="0.1" value="32"/></div>
+      <div><label>Naranja desde (°C)</label><input id="tempOrange" type="number" step="0.1" value="34"/></div>
+    </div>
+    <div class="row">
+      <div><label>Rojo desde (°C)</label><input id="tempRed" type="number" step="0.1" value="36"/></div>
+      <div>
+        <label>Variable para alerta</label>
+        <select id="tempAlertMetric">
+          <option value="selected" selected>Columna seleccionada</option>
+          <option value="tmean">tmean</option>
+          <option value="tmax">tmax</option>
+        </select>
+      </div>
+    </div>
+    <div class="hint">Estos niveles clasifican la alerta climática por temperatura máxima observada en el periodo analizado.</div>
+
+    <div style="height:1px;background:#1f2937;margin:12px 0"></div>
+    <label>Eventos de salud (CSV)</label>
+    <input id="filePts" type="file" accept=".csv,text/csv"/>
+    <label>Indicador de salud</label>
+    <select id="healthIndicator">
+      <option value="estres_termico" selected>Consultas por estrés térmico</option>
+      <option value="golpe_calor">Urgencias por golpe de calor</option>
+      <option value="mortalidad">Mortalidad</option>
+    </select>
+    <div class="row">
+      <div><label>Columna fecha (evento)</label><input id="ptDateCol" type="text" placeholder="date"/></div>
+      <div><label>Columna del indicador</label><input id="ptValCol" type="text" placeholder="estres_termico"/></div>
+    </div>
+    <label>Criterio para el nivel de alerta</label>
+    <select id="alertBasis">
+      <option value="climate" selected>Temperatura</option>
+      <option value="health">Impacto en salud</option>
+      <option value="combined">Combinado: clima + salud</option>
+    </select>
+    <div class="hint">Para clasificar por temperatura usa “Temperatura”. Para que el CSV de eventos cambie el color, usa “Impacto en salud” o “Combinado”.</div>
+    <div class="row">
+      <button class="btn" id="btnTplPts">Plantilla eventos salud</button>
+      <button class="btn warn" id="btnExport">Exportar CSV</button>
+    </div>
+
+    <div style="height:1px;background:#1f2937;margin:12px 0"></div>
+    <h2>2) Filtros y agregación</h2>
+    <div class="row">
+      <div><label>Fecha inicial</label><input id="fromDate" type="date"/></div>
+      <div><label>Fecha final</label><input id="toDate" type="date"/></div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Agregación</label>
+        <select id="agg">
+          <option value="daily" selected>Diaria</option>
+          <option value="weekly">Semanal</option>
+          <option value="monthly">Mensual</option>
+        </select>
+      </div>
+      <div>
+        <label>Métrica de temperatura</label>
+        <select id="tempAggMetric">
+          <option value="mean" selected>Media</option>
+          <option value="max">Máxima</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:10px"><button class="btn ok" id="btnAnalizar">Analizar</button></div>
+  </aside>
+
+  <main class="grid">
+    <section class="card">
+      <h2>Resumen</h2>
+      <div class="metrics">
+        <div class="metric"><div class="val" id="m_hw_count">—</div><div class="lbl"># de olas</div></div>
+        <div class="metric"><div class="val" id="m_hw_days">—</div><div class="lbl">Días en olas</div></div>
+        <div class="metric"><div class="val" id="m_max_dur">—</div><div class="lbl">Duración máx. (días)</div></div>
+        <div class="metric"><div class="val" id="m_best_lag">—</div><div class="lbl">Mejor rezago (r)</div></div>
+      </div>
+      <div class="alert-box alert-gray" id="alertBox">
+        <div class="alert-head">
+          <div class="alert-title" id="alertTitle">Alerta: sin evaluar</div>
+          <div class="alert-code" id="alertCode">—</div>
+        </div>
+        <div class="alert-desc" id="alertDesc">Carga datos y presiona Analizar para clasificar el nivel de alerta.</div>
+      </div>
+      <div class="alert-box alert-gray" id="impactBox">
+        <div class="alert-head">
+          <div class="alert-title">Impacto sanitario observado</div>
+          <div class="alert-code">SALUD</div>
+        </div>
+        <div class="alert-desc">Resumen por indicador: consultas por estrés térmico, urgencias por golpe de calor y mortalidad.</div>
+        <div class="impact-grid" id="impactGrid">
+          <div class="impact-item"><div class="impact-name">Estrés térmico</div><div class="impact-meta">Sin datos cargados.</div></div>
+          <div class="impact-item"><div class="impact-name">Golpe de calor</div><div class="impact-meta">Sin datos cargados.</div></div>
+          <div class="impact-item"><div class="impact-name">Mortalidad</div><div class="impact-meta">Sin datos cargados.</div></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+        <span class="pill" id="pill_freq">Frecuencia: —</span>
+        <span class="pill" id="pill_n">Observaciones: —</span>
+        <span class="pill" id="pill_thr">Umbral: —</span>
+        <span class="pill" id="pill_min">Mín. días: —</span>
+        <span class="pill" id="pill_agg">Agregación: —</span>
+        <span class="pill" id="pill_hwmode">Modo olas: —</span>
+      </div>
+      <div class="hint">En modo semanal/mensual no se detectan olas; se muestran series agregadas.</div>
+    </section>
+
+    <section class="grid-2">
+      <div class="card">
+        <h2>Temperatura — serie</h2>
+        <canvas id="chartTemp" width="900" height="280"></canvas>
+      </div>
+      <div class="card">
+        <h2 id="healthChartTitle">Eventos de salud</h2>
+        <canvas id="chartPts" width="900" height="280"></canvas>
+      </div>
+    </section>
+
+    <section class="grid-2">
+      <div class="card">
+        <h2 id="lagChartTitle">Correlación por rezago (temperatura → indicador de salud)</h2>
+        <canvas id="chartLag" width="900" height="280"></canvas>
+        <div style="color:#94a3b8;font-size:12px" id="lagNote">r de Pearson para rezagos 0–21 (solo cuando hay eventos de salud).</div>
+      </div>
+      <div class="card">
+        <h2>Olas de calor detectadas</h2>
+        <div style="overflow:auto; max-height:320px">
+          <table id="tblHW">
+            <thead><tr><th>#</th><th>Inicio</th><th>Fin</th><th>Días</th><th>Temp. media</th><th>Exceso medio</th><th>Temp. máx.</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+// ===== Utils (sin dependencias) =====
+const $ = s => document.querySelector(s);
+function parseDateSmart(s){ if(s instanceof Date) return s; if(typeof s!=='string') return new Date(NaN);
+  s=s.trim(); let d=new Date(s); if(!isNaN(d)) return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  if(s.includes('/')){ const [dd,mm,yyyy]=s.split(/[\/]/).map(x=>x.trim());
+    const di=+dd, mi=+mm-1, yi=+yyyy; if(!isNaN(di)&&!isNaN(mi)&&!isNaN(yi)) return new Date(Date.UTC(yi,mi,di)); }
+  return new Date(NaN); }
+const fmtISO = d => d.toISOString().slice(0,10);
+function detectSeparator(text){
+  const first = text.split(/\r?\n/)[0]||''; const count = ch => (first.split(ch).length-1);
+  return count(';')>count(',')? ';' : ',';
+}
+function parseCSV(text){
+  const sep = detectSeparator(text);
+  const lines = text.split(/\r?\n/).filter(x=>x.trim().length);
+  if (!lines.length) return [];
+  const headers = lines[0].split(sep).map(h=>h.trim());
+  const rows = [];
+  for (let i=1;i<lines.length;i++){
+    const parts = lines[i].split(sep);
+    const obj = {}; headers.forEach((h,idx)=>obj[h]=parts[idx]!==undefined? parts[idx].trim() : '');
+    rows.push(obj);
+  }
+  return rows;
+}
+function readFile(file){ return new Promise((res,rej)=>{ const fr=new FileReader();
+  fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsText(file); }); }
+function summarizeFreq(dates){
+  if (dates.length<2) return 'desconocida'; const diffs=[];
+  for (let i=1;i<dates.length;i++){ const dt=(dates[i]-dates[i-1])/(1000*3600*24); if (!isNaN(dt)&&dt>0&&dt<400) diffs.push(dt); }
+  if (!diffs.length) return 'desconocida';
+  const med= diffs.sort((a,b)=>a-b)[Math.floor(diffs.length/2)];
+  if (med<=2) return 'diaria'; if (med<=10) return 'semanal'; if (med<=40) return 'mensual'; return 'desconocida';
+}
+function rollingEvents(dates, temps, thr, minDays){
+  const hw=[]; let i=0; const n=dates.length;
+  while(i<n){
+    if (temps[i] >= thr){
+      let j=i; while(j<n && temps[j] >= thr && ( (dates[j]-dates[j-1])/(1000*3600*24) <= 1 || j===i )) j++;
+      const len=j-i; if (len>=minDays){
+        const sl=temps.slice(i,j), meanT=sl.reduce((a,b)=>a+b,0)/sl.length;
+        const ex=sl.map(x=>x-thr).filter(x=>x>0), exMean = ex.length? (ex.reduce((a,b)=>a+b,0)/ex.length):0;
+        const maxT=Math.max(...sl);
+        hw.push({start:dates[i], end:dates[j-1], days:len, meanT:+meanT.toFixed(2), exMean:+exMean.toFixed(2), maxT:+maxT.toFixed(2)});
+      }
+      i=j;
+    } else i++;
+  }
+  return hw;
+}
+function heatwavesFromId(rows, thr){
+  const byId = new Map();
+  for (const r of rows){
+    const id = String(r.hwId ?? '').trim();
+    if (!id) continue;
+    if (!byId.has(id)) byId.set(id, []);
+    byId.get(id).push(r);
+  }
+  const out=[];
+  for (const [id, arr] of byId){
+    arr.sort((a,b)=>a.d-b.d);
+    const temps=arr.map(o=>o.v).filter(v=>isFinite(v));
+    if (!temps.length) continue;
+    const meanT=temps.reduce((a,b)=>a+b,0)/temps.length;
+    const ex=temps.map(x=>x-thr).filter(x=>x>0);
+    const exMean = ex.length? (ex.reduce((a,b)=>a+b,0)/ex.length):0;
+    out.push({
+      id:id,
+      start:arr[0].d,
+      end:arr[arr.length-1].d,
+      days:arr.length,
+      meanT:+meanT.toFixed(2),
+      exMean:+exMean.toFixed(2),
+      maxT:+Math.max(...temps).toFixed(2)
+    });
+  }
+  out.sort((a,b)=>a.start-b.start);
+  return out;
+}
+function pearson(x,y){
+  const n=x.length; if(n<3) return {r:NaN,p:NaN,n}; const mx=x.reduce((a,b)=>a+b,0)/n, my=y.reduce((a,b)=>a+b,0)/n;
+  let num=0,vx=0,vy=0; for(let i=0;i<n;i++){const dx=x[i]-mx, dy=y[i]-my; num+=dx*dy; vx+=dx*dx; vy+=dy*dy;}
+  const den=Math.sqrt(vx*vy); if(den===0) return {r:NaN,p:NaN,n}; const r=num/den; const df=n-2;
+  const t=r*Math.sqrt(df/(1-r*r)); const p = 2*(1 - approxStdNormalCDF(Math.abs(t))); return {r,p,n};
+}
+function approxStdNormalCDF(z){ const t=1/(1+0.2316419*Math.abs(z));
+  const d=0.3989423*Math.exp(-z*z/2);
+  const prob=1-d*(1.330274429*t - 1.821255978*t*t + 1.781477937*t*t*t - 0.356563782*t*t*t*t + 0.31938153*t*t*t*t*t);
+  return (z>=0)? prob : 1-prob;
+}
+function groupByPeriod(rows, mode, tempMetric){
+  if (mode==='daily') return rows.map(r=>({key:fmtISO(r.d), d:r.d, temp:r.v, cases:r.c}));
+  const map = new Map();
+  function keyFor(d){
+    if (mode==='weekly'){
+      const dt=new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+      const day=dt.getUTCDay(); const diff=(day===0? -6 : 1-day); // start Monday
+      const monday=new Date(dt.getTime()+diff*86400000);
+      return 'W'+fmtISO(monday);
+    }
+    if (mode==='monthly'){
+      return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0');
+    }
+  }
+  for (const r of rows){
+    const k=keyFor(r.d);
+    if (!map.has(k)) map.set(k, {key:k, d:r.d, temps:[], cases:[]});
+    const o=map.get(k); o.temps.push(r.v); if (r.c!=null) o.cases.push(r.c);
+  }
+  const out=[];
+  for (const [k,o] of map){
+    const temp = (tempMetric==='max')? Math.max(...o.temps) : (o.temps.reduce((a,b)=>a+b,0)/o.temps.length);
+    const cases = o.cases.length? o.cases.reduce((a,b)=>a+b,0) : null;
+    out.push({key:k, d:o.d, temp:+temp.toFixed(2), cases});
+  }
+  // sort by key roughly
+  out.sort((a,b)=> a.key.localeCompare(b.key));
+  return out;
+}
+function lagCorrelation(merged, maxLag=21){
+  const results=[];
+  for (let L=0; L<=maxLag; L++){
+    const x=[], y=[];
+    for (let i=0;i<merged.length;i++){
+      const j=i-L; const temp=(j>=0)? merged[j].temp : null; const cas=merged[i].cases;
+      if (temp!=null && cas!=null){ x.push(temp); y.push(cas); }
+    }
+    const {r,p,n}=pearson(x,y);
+    results.push({lag:L, r:isFinite(r)?+r.toFixed(3):NaN, p:isFinite(p)?+p:NaN, n});
+  }
+  const best = results.reduce((a,b)=> (Math.abs(b.r||0)>Math.abs(a.r||0)? b : a), {lag:0,r:0,p:NaN,n:0});
+  return {results,best};
+}
+function downloadText(filename, text){
+  const blob=new Blob([text], {type:'text/plain;charset=utf-8;'});
+  const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=filename; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
+
+// ===== Dibujado Canvas =====
+function drawLine(canvas, labels, values, thr, bands){
+  const ctx=canvas.getContext('2d'), W=canvas.width, H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const pl=48, pr=12, pt=12, pb=28;
+  const valid = values.filter(v=>isFinite(v));
+  const minY = Math.min(...valid, isFinite(thr)?thr:Infinity);
+  const maxY = Math.max(...valid, isFinite(thr)?thr:-Infinity);
+  const yMin = Math.floor(minY-1), yMax = Math.ceil(maxY+1);
+  const xFor = i => pl + (i/(labels.length-1))*(W-pl-pr);
+  const yFor = v => pt + (1-(v-yMin)/(yMax-yMin))*(H-pt-pb);
+  // grid
+  ctx.strokeStyle="rgba(148,163,184,0.15)"; ctx.lineWidth=1;
+  for (let g=0; g<=5; g++){ const gy=pt+g*(H-pt-pb)/5; ctx.beginPath(); ctx.moveTo(pl,gy); ctx.lineTo(W-pr,gy); ctx.stroke(); }
+  // bands
+  if (bands && bands.length){
+    ctx.fillStyle="rgba(239,68,68,0.12)";
+    bands.forEach(b=>{ const iStart=labels.indexOf(b.start), iEnd=labels.indexOf(b.end);
+      if (iStart>=0 && iEnd>=0){ const xs=xFor(iStart), xe=xFor(iEnd); ctx.fillRect(xs,pt,Math.max(2,xe-xs),H-pt-pb); }
+    });
+  }
+  // threshold
+  if (isFinite(thr)){ ctx.strokeStyle="rgba(250,250,250,0.5)"; ctx.setLineDash([6,6]);
+    ctx.beginPath(); ctx.moveTo(pl,yFor(thr)); ctx.lineTo(W-pr,yFor(thr)); ctx.stroke(); ctx.setLineDash([]); }
+  // series
+  ctx.strokeStyle="#cbd5e1"; ctx.lineWidth=2; ctx.beginPath();
+  for (let i=0;i<labels.length;i++){ const v=values[i]; if(!isFinite(v)) continue; const x=xFor(i), y=yFor(v); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+  ctx.stroke();
+  // x labels
+  ctx.fillStyle="#9ca3af"; ctx.font="12px system-ui"; const step=Math.max(1, Math.floor(labels.length/8));
+  for (let i=0;i<labels.length;i+=step){ const x=xFor(i), y=H-10; ctx.fillText(labels[i], x-20, y); }
+  // y labels
+  for (let g=0; g<=5; g++){ const val=yMin + g*(yMax-yMin)/5; const yy=pt+(1-g/5)*(H-pt-pb); ctx.fillText(val.toFixed(0), 8, yy+4); }
+}
+function drawBars(canvas, labels, values){
+  const ctx=canvas.getContext('2d'), W=canvas.width, H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const pl=48, pr=12, pt=12, pb=28;
+  const maxY=Math.max(1,...values.filter(v=>isFinite(v))); const yFor=v=> pt + (1-(v/ maxY))*(H-pt-pb);
+  const barW=(W-pl-pr)/Math.max(1,labels.length)*0.8;
+  ctx.strokeStyle="rgba(148,163,184,0.15)"; for(let g=0; g<=5; g++){ const gy=pt+g*(H-pt-pb)/5; ctx.beginPath(); ctx.moveTo(pl,gy); ctx.lineTo(W-pr,gy); ctx.stroke(); }
+  ctx.fillStyle="#93c5fd";
+  for (let i=0;i<labels.length;i++){
+    const x=pl + i*((W-pl-pr)/Math.max(1,labels.length)) + ((W-pl-pr)/Math.max(1,labels.length)-barW)/2;
+    const y=yFor(values[i]||0); const h=(H-pb)-y; ctx.fillRect(x,y,barW,h);
+  }
+  ctx.fillStyle="#9ca3af"; ctx.font="12px system-ui"; const step=Math.max(1, Math.floor(labels.length/8));
+  for (let i=0;i<labels.length;i+=step){ const x=pl + i*((W-pl-pr)/Math.max(1,labels.length)); ctx.fillText(labels[i], x-20, H-10); }
+  for (let g=0; g<=5; g++){ const val = g*(maxY/5); const yy=pt+(1-g/5)*(H-pt-pb); ctx.fillText(val.toFixed(0), 8, yy+4); }
+}
+function drawLagBars(canvas, lags, rvals){
+  const ctx=canvas.getContext('2d'), W=canvas.width, H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const pl=48, pr=12, pt=12, pb=28; const barW=(W-pl-pr)/Math.max(1,lags.length)*0.8;
+  const yFor=v=> pt + (1-((v+1)/2))*(H-pt-pb);
+  ctx.strokeStyle="rgba(148,163,184,0.5)"; ctx.beginPath(); ctx.moveTo(pl, yFor(0)); ctx.lineTo(W-pr, yFor(0)); ctx.stroke();
+  for (let i=0;i<lags.length;i++){
+    const x=pl + i*((W-pl-pr)/Math.max(1,lags.length)) + ((W-pl-pr)/Math.max(1,lags.length)-barW)/2;
+    const r=rvals[i]||0; ctx.fillStyle = r>=0? "#86efac" : "#fca5a5";
+    const y0=yFor(0), y=yFor(r); ctx.fillRect(x, Math.min(y0,y), barW, Math.abs(y0-y));
+  }
+  ctx.fillStyle="#9ca3af"; ctx.font="12px system-ui";
+  for (let i=0;i<lags.length;i+=3){ const x=pl + i*((W-pl-pr)/Math.max(1,lags.length)); ctx.fillText(String(lags[i]), x, H-10); }
+  for (let g=0; g<=4; g++){ const val=-1 + g*(2/4); const yy=yFor(val); ctx.fillText(val.toFixed(1), 8, yy+4); }
+}
+
+// ===== Estado y flujo =====
+let rawTemp=null, rawPts=null, heatwaves=[], mergedDaily=[];
+const healthIndicatorLabels = {
+  estres_termico: 'Consultas por estrés térmico',
+  golpe_calor: 'Urgencias por golpe de calor',
+  mortalidad: 'Mortalidad'
+};
+function toCSV(arr){ if(!arr.length) return ''; const hs=Object.keys(arr[0]); return [hs.join(',')].concat(arr.map(r=>hs.map(h=>String(r[h]??'')).join(','))).join('\\n'); }
+function populateTempColumnOptions(cols){
+  const sel=$('#tempValCol'); sel.innerHTML='<option value="">(elige o escribe)</option>';
+  cols.forEach(c=>{ const op=document.createElement('option'); op.value=c; op.textContent=c; sel.appendChild(op); });
+}
+function getTempCol(){ return $('#tempValCol').value || $('#tempValColTxt').value.trim(); }
+function getHealthIndicator(){ return $('#healthIndicator').value; }
+function getHealthIndicatorLabel(){ return healthIndicatorLabels[getHealthIndicator()] || 'Eventos de salud'; }
+function syncHealthColumn(){ $('#ptValCol').value = getHealthIndicator(); }
+
+
+function applyTempAlertProfile(){
+  const profile = $('#tempAlertProfile') ? $('#tempAlertProfile').value : 'caribe';
+  if (profile === 'caribe'){ $('#tempYellow').value=32; $('#tempOrange').value=34; $('#tempRed').value=36; }
+  if (profile === 'sensible'){ $('#tempYellow').value=30; $('#tempOrange').value=32; $('#tempRed').value=34; }
+}
+function getTempAlertValues(){
+  return {
+    yellow: parseFloat($('#tempYellow')?.value || '32'),
+    orange: parseFloat($('#tempOrange')?.value || '34'),
+    red: parseFloat($('#tempRed')?.value || '36')
+  };
+}
+function classifyTemperatureAlert(tRows, heatwaves, thr, minDays){
+  if (!tRows.length) return {level:'gray', title:'Alerta: sin datos', code:'—', desc:'No hay observaciones de temperatura válidas para clasificar la alerta.'};
+  const vals = getTempAlertValues();
+  const maxTemp = Math.max(...tRows.map(o=>o.v));
+  const latest = tRows[tRows.length-1];
+  const maxDur = heatwaves.length ? Math.max(...heatwaves.map(h=>h.days)) : 0;
+  if (maxTemp >= vals.red){
+    return {level:'red', title:'Alerta roja por temperatura', code:'ROJO', desc:`Temperatura máxima observada ${maxTemp.toFixed(1)} °C, igual o superior al nivel rojo (${vals.red} °C). Duración máxima de ola: ${maxDur || 0} días. Activar respuesta ampliada.`};
+  }
+  if (maxTemp >= vals.orange || heatwaves.length > 0){
+    return {level:'orange', title:'Alerta naranja por temperatura', code:'NARANJA', desc:`Temperatura máxima observada ${maxTemp.toFixed(1)} °C. Se supera el nivel naranja (${vals.orange} °C) o hay ola identificada. Intensificar vigilancia y acciones comunitarias.`};
+  }
+  if (maxTemp >= vals.yellow || latest.v >= vals.yellow){
+    return {level:'yellow', title:'Alerta amarilla por temperatura', code:'AMARILLO', desc:`Temperatura máxima observada ${maxTemp.toFixed(1)} °C. Se supera el nivel amarillo (${vals.yellow} °C). Preparar prevención y monitoreo.`};
+  }
+  return {level:'gray', title:'Sin alerta por temperatura', code:'NORMAL', desc:`La temperatura máxima observada fue ${maxTemp.toFixed(1)} °C, por debajo del nivel amarillo (${vals.yellow} °C).`};
+}
+function summarizeHealthImpacts(rawPtsRows, ptDateCol, fromV, toV){
+  const defs=[
+    {key:'estres_termico', label:'Consultas por estrés térmico', yellow:20, orange:35, red:100},
+    {key:'golpe_calor', label:'Urgencias por golpe de calor', yellow:5, orange:10, red:50},
+    {key:'mortalidad', label:'Mortalidad', yellow:1, orange:3, red:8}
+  ];
+  return defs.map(def=>{
+    let rows=[];
+    if (rawPtsRows && rawPtsRows.length){
+      rows = rawPtsRows.map(r=>({d:parseDateSmart(String(r[ptDateCol])), c:Number(r[def.key])}))
+        .filter(o=>!isNaN(o.d) && isFinite(o.c))
+        .sort((a,b)=>a.d-b.d);
+      if (fromV) rows = rows.filter(o=>o.d>=fromV);
+      if (toV) rows = rows.filter(o=>o.d<=toV);
+    }
+    const maxCases = rows.length ? Math.max(...rows.map(o=>o.c)) : 0;
+    const totalCases = rows.reduce((a,b)=>a+b.c,0);
+    let level='gray', texto='Sin alerta';
+    if (maxCases >= def.red){ level='red'; texto='Impacto alto'; }
+    else if (maxCases >= def.orange){ level='orange'; texto='Impacto moderado-alto'; }
+    else if (maxCases >= def.yellow){ level='yellow'; texto='Impacto en seguimiento'; }
+    return {...def, rows:rows.length, maxCases, totalCases, level, texto};
+  });
+}
+function updateImpactBox(items){
+  const grid=$('#impactGrid'); if (!grid) return;
+  grid.innerHTML='';
+  items.forEach(it=>{
+    const div=document.createElement('div');
+    div.className='impact-item';
+    div.innerHTML=`<div class="impact-name">${it.label}</div>
+      <div class="impact-meta">Pico diario: <b>${it.maxCases}</b><br/>Total periodo: <b>${it.totalCases}</b><br/>Registros: ${it.rows}</div>
+      <span class="impact-badge badge-${it.level}">${it.texto}</span>`;
+    grid.appendChild(div);
+  });
+}
+
+function currentConsecutiveHotDays(tRows, thr){
+  let count=0;
+  for (let i=tRows.length-1; i>=0; i--){
+    if (tRows[i].v >= thr) count++; else break;
+  }
+  return count;
+}
+function classifyAlert(tRows, heatwaves, thr, minDays){
+  if (!tRows.length) return {level:'gray', title:'Alerta: sin datos', code:'—', desc:'No hay observaciones de temperatura válidas para clasificar la alerta.'};
+  const latest = tRows[tRows.length-1];
+  const hotRun = currentConsecutiveHotDays(tRows, thr);
+  const maxTemp = Math.max(...tRows.map(o=>o.v));
+  const maxDur = heatwaves.length ? Math.max(...heatwaves.map(h=>h.days)) : 0;
+  if (maxDur >= minDays + 2 || maxTemp >= thr + 2){
+    return {level:'red', title:'Alerta roja', code:'ROJO', desc:`Ola intensa o prolongada: duración máxima ${maxDur || hotRun} días y temperatura máxima ${maxTemp.toFixed(1)} °C. Activar respuesta ampliada y protección de población vulnerable.`};
+  }
+  if (heatwaves.length > 0 || hotRun >= minDays){
+    return {level:'orange', title:'Alerta naranja', code:'NARANJA', desc:`Ola de calor detectada: al menos ${minDays} días consecutivos con temperatura ≥ ${thr} °C. Intensificar vigilancia, comunicación del riesgo y acciones comunitarias.`};
+  }
+  if (latest.v >= thr || hotRun > 0){
+    return {level:'yellow', title:'Alerta amarilla', code:'AMARILLO', desc:`Condición de calor en seguimiento: la última temperatura registrada fue ${latest.v.toFixed(1)} °C. Preparar mensajes preventivos y monitorear continuidad.`};
+  }
+  return {level:'gray', title:'Sin alerta activa', code:'NORMAL', desc:`No se cumplen criterios de alerta con el umbral actual de ${thr} °C y mínimo de ${minDays} días.`};
+}
+function levelRank(level){ return {gray:0, yellow:1, orange:2, red:3}[level] ?? 0; }
+function classifyHealthAlert(pRows, indicator, label){
+  if (!pRows || !pRows.length) return {level:'gray', title:'Alerta: sin datos de salud', code:'—', desc:'No hay eventos de salud válidos para clasificar la alerta sanitaria.'};
+  const maxCases = Math.max(...pRows.map(o=>o.c));
+  const totalCases = pRows.reduce((a,b)=>a+b.c,0);
+  let yellow=1, orange=3, red=8;
+  if (indicator === 'estres_termico'){ yellow=20; orange=35; red=100; }
+  if (indicator === 'golpe_calor'){ yellow=5; orange=10; red=50; }
+  if (indicator === 'mortalidad'){ yellow=1; orange=3; red=8; }
+  if (maxCases >= red){
+    return {level:'red', title:'Alerta roja', code:'ROJO', desc:`Impacto sanitario alto en ${label.toLowerCase()}: pico de ${maxCases} eventos diarios y total de ${totalCases}. Activar respuesta ampliada.`};
+  }
+  if (maxCases >= orange){
+    return {level:'orange', title:'Alerta naranja', code:'NARANJA', desc:`Impacto sanitario moderado-alto en ${label.toLowerCase()}: pico de ${maxCases} eventos diarios y total de ${totalCases}. Intensificar vigilancia y capacidad de respuesta.`};
+  }
+  if (maxCases >= yellow){
+    return {level:'yellow', title:'Alerta amarilla', code:'AMARILLO', desc:`Impacto sanitario en seguimiento para ${label.toLowerCase()}: pico de ${maxCases} eventos diarios. Reforzar prevención y monitoreo.`};
+  }
+  return {level:'gray', title:'Sin alerta sanitaria activa', code:'NORMAL', desc:`El indicador ${label.toLowerCase()} no supera los umbrales de alerta sanitaria.`};
+}
+function chooseAlert(climateAlert, healthAlert, basis){
+  if (basis === 'health') return healthAlert;
+  if (basis === 'climate') return climateAlert;
+  return levelRank(healthAlert.level) >= levelRank(climateAlert.level) ? healthAlert : climateAlert;
+}
+function updateAlertBox(alert){
+  const box=$('#alertBox');
+  box.className = 'alert-box alert-' + alert.level;
+  $('#alertTitle').textContent = alert.title;
+  $('#alertCode').textContent = alert.code;
+  $('#alertDesc').textContent = alert.desc;
+}
+function processAll(){
+  if (!rawTemp || !rawTemp.length){ alert('Carga primero el archivo de temperatura o usa DEMO.'); return; }
+  const tempDateCol = $('#tempDateCol').value.trim() || 'date';
+  const tempValCol  = getTempCol() || 'tmean';
+  const hwMode = $('#hwMode').value || 'auto';
+  const hwIdCol = $('#hwIdCol').value.trim() || 'heatwave_id';
+  const ptDateCol = $('#ptDateCol').value.trim() || 'date';
+  const healthIndicator = getHealthIndicator();
+  const healthLabel = getHealthIndicatorLabel();
+  const ptValCol  = $('#ptValCol').value.trim() || healthIndicator;
+  const alertBasis = $('#alertBasis').value || 'health';
+  const thr = parseFloat($('#thr').value);
+  const minDays = parseInt($('#minDays').value,10);
+  const fromV = $('#fromDate').value? parseDateSmart($('#fromDate').value) : null;
+  const toV   = $('#toDate').value? parseDateSmart($('#toDate').value) : null;
+  const aggMode = $('#agg').value;
+  const tempAggMetric = $('#tempAggMetric').value;
+
+  let tRows = rawTemp.map(r=>({d:parseDateSmart(String(r[tempDateCol])), v:Number(r[tempValCol]), hwId:(r[hwIdCol] ?? '')}))
+                     .filter(o=>!isNaN(o.d) && isFinite(o.v))
+                     .sort((a,b)=>a.d-b.d);
+  if (fromV) tRows = tRows.filter(o=>o.d>=fromV);
+  if (toV)   tRows = tRows.filter(o=>o.d<=toV);
+
+  let pRows=[];
+  if (rawPts && rawPts.length){
+    pRows = rawPts.map(r=>({d:parseDateSmart(String(r[ptDateCol])), c:Number(r[ptValCol])}))
+                  .filter(o=>!isNaN(o.d) && (isFinite(o.c)||o.c===0))
+                  .sort((a,b)=>a.d-b.d);
+    if (fromV) pRows = pRows.filter(o=>o.d>=fromV);
+    if (toV)   pRows = pRows.filter(o=>o.d<=toV);
+  }
+
+  // Olas de calor: automático o desde heatwave_id
+  const freq = summarizeFreq(tRows.map(o=>o.d));
+  if (hwMode === 'id'){
+    heatwaves = heatwavesFromId(tRows, thr);
+  } else if (aggMode==='daily' && freq==='diaria'){
+    const tVals = tRows.map(o=>o.v), tDates=tRows.map(o=>o.d);
+    heatwaves = rollingEvents(tDates, tVals, thr, minDays);
+  } else { heatwaves=[]; }
+
+  // Serie agregada para gráficos/correlación
+  const joinedDaily = tRows.map(o=>({d:o.d, v:o.v, c: null}));
+  // map patients into joinedDaily range (only for correlation; later re-aggregate)
+  if (pRows.length){
+    const pMap = new Map(pRows.map(o=>[fmtISO(o.d), o.c]));
+    for (const r of joinedDaily){ const key=fmtISO(r.d); if (pMap.has(key)) r.c = pMap.get(key); }
+  }
+  const grouped = groupByPeriod(joinedDaily, aggMode, tempAggMetric);
+  mergedDaily = grouped.map(o=>({date:o.key, temp:o.temp, health_indicator: healthLabel, cases:o.cases}));
+
+  // Update UI
+  $('#pill_freq').textContent = 'Frecuencia: ' + freq;
+  $('#pill_n').textContent = 'Observaciones: ' + tRows.length + (pRows.length? (' | eventos: '+pRows.length) : '');
+  $('#healthChartTitle').textContent = healthLabel;
+  $('#lagChartTitle').textContent = 'Correlación por rezago (temperatura → ' + healthLabel.toLowerCase() + ')';
+  $('#pill_thr').textContent = 'Umbral: ' + thr + '°C';
+  $('#pill_min').textContent = 'Mín. días: ' + minDays;
+  $('#pill_agg').textContent = 'Agregación: ' + (aggMode==='daily'?'diaria':aggMode==='weekly'?'semanal':'mensual');
+  $('#pill_hwmode').textContent = 'Modo olas: ' + (hwMode==='id' ? 'heatwave_id CSV' : 'automático');
+
+  // Tabla de olas
+  const tb=$('#tblHW tbody'); tb.innerHTML='';
+  heatwaves.forEach((h,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${h.id ?? (i+1)}</td><td>${fmtISO(h.start)}</td><td>${fmtISO(h.end)}</td>
+      <td>${h.days}</td><td>${h.meanT}</td><td>${h.exMean}</td><td>${h.maxT}</td>`;
+    tb.appendChild(tr);
+  });
+  $('#m_hw_count').textContent = heatwaves.length;
+  $('#m_hw_days').textContent = heatwaves.reduce((a,b)=>a+b.days,0);
+  $('#m_max_dur').textContent = heatwaves.length? Math.max(...heatwaves.map(h=>h.days)) : '—';
+  const climateAlert = classifyTemperatureAlert(tRows, heatwaves, thr, minDays);
+  const healthImpactItems = summarizeHealthImpacts(rawPts, ptDateCol, fromV, toV);
+  updateImpactBox(healthImpactItems);
+  const healthAlert = classifyHealthAlert(pRows, healthIndicator, healthLabel);
+  updateAlertBox(chooseAlert(climateAlert, healthAlert, alertBasis));
+
+  // Gráficas
+  const labels = mergedDaily.map(o=>o.date);
+  const tempVals = mergedDaily.map(o=>o.temp);
+  const bands = heatwaves.map(h=>({start:fmtISO(h.start), end:fmtISO(h.end)}));
+  drawLine($('#chartTemp'), labels, tempVals, aggMode==='daily'? thr : NaN, aggMode==='daily'? bands:[]);
+  const casesVals = mergedDaily.map(o=>o.cases ?? 0);
+  drawBars($('#chartPts'), labels, casesVals);
+
+  // Correlación
+  if (mergedDaily.some(o=>o.cases!=null)){
+    const {results, best} = lagCorrelation(mergedDaily, 21);
+    $('#m_best_lag').textContent = `${best.lag} d (r=${isFinite(best.r)?best.r:'NA'})`;
+    $('#lagNote').textContent = `Mejor rezago para ${healthLabel.toLowerCase()}: ${best.lag} días; r=${best.r??'NA'} (n=${best.n}).`;
+    drawLagBars($('#chartLag'), results.map(r=>r.lag), results.map(r=>r.r));
+  } else {
+    $('#m_best_lag').textContent = '—';
+    drawLagBars($('#chartLag'), [], []);
+    $('#lagNote').textContent = 'Carga datos de eventos de salud para evaluar correlaciones.';
+  }
+}
+
+// Plantillas y DEMO
+$('#btnTplTemp').addEventListener('click', ()=>{
+  const csv=['date,tmean,tmax','2025-01-01,27.5,30.1','2025-01-02,28.1,30.8','2025-01-03,29.0,31.7','2025-01-04,31.2,33.5','2025-01-05,33.4,35.0','2025-01-06,33.1,34.7','2025-01-07,32.8,34.3'].join('\\n');
+  downloadText('plantilla_temperatura.csv', csv);
+});
+$('#btnTplPts').addEventListener('click', ()=>{
+  const csv=['date,cases','2025-01-01,2','2025-01-02,1','2025-01-03,0','2025-01-04,3','2025-01-05,6','2025-01-06,5','2025-01-07,4'].join('\\n');
+  downloadText('plantilla_pacientes.csv', csv);
+});
+$('#btnDemo').addEventListener('click', ()=>{
+  const start=new Date(Date.UTC(2025,0,1)); const rowsT=[], rowsP=[];
+  for (let i=0;i<120;i++){ const d=new Date(start.getTime()+i*86400000);
+    let t=27.5 + Math.sin(i/10)*1.2, tx=t+2.0;
+    let hw='';
+    if (i>=20&&i<=25){ t=32.6 + Math.sin(i)*0.5; tx=t+1.8; hw='1'; }
+    if (i>=55&&i<=62){ t=33.2 + Math.sin(i)*0.6; tx=t+2.0; hw='2'; }
+    if (i>=90&&i<=98){ t=34.0 + Math.sin(i)*0.7; tx=t+2.2; hw='3'; }
+    rowsT.push({date:fmtISO(d), tmean:+t.toFixed(1), tmax:+tx.toFixed(1), heatwave_id:hw});
+  }
+  for (let i=0;i<120;i++){
+    const d=new Date(start.getTime()+i*86400000);
+    const tlag=i>=7? rowsT[i-7].tmean : 27.5;
+    const consultas=Math.max(0, Math.round((tlag-27.5)*1.8 + (Math.random()*1.5)));
+    const urgencias=Math.max(0, Math.round((tlag-29.0)*0.9 + (Math.random()*0.8)));
+    const mortalidad=Math.max(0, Math.round((tlag-31.0)*0.25 + (Math.random()*0.25)));
+    rowsP.push({date:fmtISO(d), estres_termico:consultas, golpe_calor:urgencias, mortalidad:mortalidad});
+  }
+  rawTemp=rowsT; rawPts=rowsP;
+  $('#tempDateCol').value='date'; populateTempColumnOptions(Object.keys(rowsT[0]).filter(k=>k!=='date'));
+  $('#tempValCol').value='tmean'; $('#tempValColTxt').value='';
+  $('#ptDateCol').value='date'; $('#healthIndicator').value='estres_termico'; syncHealthColumn();
+  $('#thr').value=32; $('#minDays').value=3; $('#agg').value='daily'; $('#hwMode').value='id'; $('#hwIdCol').value='heatwave_id';
+  $('#fromDate').value=rowsT[0].date; $('#toDate').value=rowsT[rowsT.length-1].date;
+  processAll();
+});
+
+// Lectura de archivos
+$('#fileTemp').addEventListener('change', async (e)=>{
+  const f=e.target.files[0]; if(!f) return; const txt=await readFile(f); rawTemp=parseCSV(txt);
+  if (rawTemp.length){
+    const cols=Object.keys(rawTemp[0]); $('#tempDateCol').value = cols.find(c=>/date|fecha|dia|day/i.test(c)) || cols[0];
+    const options = cols.filter(c=>c!==$('#tempDateCol').value); populateTempColumnOptions(options);
+    const idCol = cols.find(c=>/^heatwave_id$/i.test(c)) || cols.find(c=>/heat.*wave|ola/i.test(c));
+    if (idCol){ $('#hwIdCol').value = idCol; $('#hwMode').value = 'id'; }
+  }
+});
+$('#filePts').addEventListener('change', async (e)=>{
+  const f=e.target.files[0]; if(!f) return; const txt=await readFile(f); rawPts=parseCSV(txt);
+  if (rawPts.length){
+    const cols=Object.keys(rawPts[0]); $('#ptDateCol').value = cols.find(c=>/date|fecha|dia|day/i.test(c)) || cols[0];
+    const selected = getHealthIndicator();
+    $('#ptValCol').value = cols.includes(selected) ? selected : (cols.find(c=>/estres|golpe|mortal|case|caso|consulta|urgencia|defunc|pac|count|n/i.test(c)) || (cols[1]||cols[0]));
+  }
+});
+$('#healthIndicator').addEventListener('change', ()=>{ syncHealthColumn(); if (rawTemp && rawTemp.length) processAll(); });
+$('#alertBasis').addEventListener('change', ()=>{ if (rawTemp && rawTemp.length) processAll(); });
+$('#tempAlertProfile').addEventListener('change', ()=>{ applyTempAlertProfile(); if (rawTemp && rawTemp.length) processAll(); });
+['#tempYellow','#tempOrange','#tempRed'].forEach(sel=>$(sel).addEventListener('input', ()=>{ $('#tempAlertProfile').value='custom'; if (rawTemp && rawTemp.length) processAll(); }));
+$('#tempAlertMetric').addEventListener('change', ()=>{ const v=$('#tempAlertMetric').value; if (v !== 'selected'){ $('#tempValCol').value=v; $('#tempValColTxt').value=''; } if (rawTemp && rawTemp.length) processAll(); });
+$('#hwMode').addEventListener('change', ()=>{ if (rawTemp && rawTemp.length) processAll(); });
+$('#btnAnalizar').addEventListener('click', processAll);
+$('#btnExport').addEventListener('click', ()=>{
+  if (!mergedDaily.length){ alert('Primero analiza para generar resultados.'); return; }
+  const hwCSV = heatwaves.length? toCSV(heatwaves.map((h,idx)=>({
+    id: h.id ?? (idx+1), start: fmtISO(h.start), end: fmtISO(h.end), days: h.days,
+    mean_temp: h.meanT, mean_excess: h.exMean, max_temp: h.maxT }))): 'id,start,end,days,mean_temp,mean_excess,max_temp';
+  const mergedCSV = toCSV(mergedDaily);
+  downloadText('olas_calor_resumen.csv', hwCSV);
+  downloadText('serie_agregada.csv', mergedCSV);
+});
+</script>
+</body>
+</html>
